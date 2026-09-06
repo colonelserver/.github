@@ -31,9 +31,17 @@ die() {
 }
 
 backup_file() {
-    local file="$1"
-    if [[ -f "$file" && ! -e "${file}.before-security-updates-${BACKUP_STAMP}" ]]; then
-        cp -a -- "$file" "${file}.before-security-updates-${BACKUP_STAMP}"
+    local file="$1" backup_dir backup_name backup_path
+    backup_dir="/var/backups/security-auto-updates/${BACKUP_STAMP}"
+    backup_name="${file#/}"
+    backup_name="${backup_name//\//__}"
+    backup_path="${backup_dir}/${backup_name}"
+
+    if [[ -f "$file" ]]; then
+        mkdir -p -- "$backup_dir"
+        if [[ ! -e "$backup_path" ]]; then
+            cp -a -- "$file" "$backup_path"
+        fi
     fi
 }
 
@@ -157,6 +165,17 @@ configure_apt() {
     local periodic="/etc/apt/apt.conf.d/20auto-upgrades"
     local origins="/etc/apt/apt.conf.d/51security-auto-update-origins"
     local policy="/etc/apt/apt.conf.d/52security-auto-update-policy"
+    local legacy_backup legacy_dir="/var/backups/security-auto-updates/legacy"
+
+    # Versions before 2026-09-06 placed backups beside APT configuration files.
+    # Move only backups created by this script so APT no longer warns about them.
+    shopt -s nullglob
+    for legacy_backup in /etc/apt/apt.conf.d/*.before-security-updates-*; do
+        mkdir -p -- "$legacy_dir"
+        mv -- "$legacy_backup" "$legacy_dir/"
+        log "Moved legacy APT backup out of /etc/apt/apt.conf.d"
+    done
+    shopt -u nullglob
 
     export DEBIAN_FRONTEND=noninteractive
     log "Refreshing APT metadata"
